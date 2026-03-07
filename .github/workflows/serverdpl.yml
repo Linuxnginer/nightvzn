@@ -1,0 +1,87 @@
+name: Build Scan Deploy
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build-scan-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        run: echo "IMAGE_NAME=myapp:latest" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME .
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan Docker image with Trivy
+        run: |
+          mkdir -p trivy-results
+          trivy image --no-progress --format table -o trivy-results/scan.txt $IMAGE_NAME
+          cat trivy-results/scan.txt
+
+      - name: Upload Trivy logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-results
+          path: trivy-results/scan.txt
+
+      - name: Save Docker image
+        run: docker save $IMAGE_NAME | gzip > image.tar.gz
+
+      - name: Copy image to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: "image.tar.gz"
+          target: "/tmp/"
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            set -e
+
+            echo "Loading new Docker image"
+            docker load < /tmp/image.tar.gz
+
+            echo "Stopping old container"
+            docker stop myapp || true
+            docker rm myapp || true
+
+            echo "Killing anything on port 8000"
+            sudo fuser -k 8000/tcp || true
+
+            echo "Running new container"
+            docker run -d \
+              --name myapp \
+              -p 8000:8000 \
+              --restart unless-stopped \
+              myapp:latest
+
+            echo "Deployment finished"
