@@ -4,8 +4,8 @@ A **FastAPI-based web application** for performing **domain, IP, email, and DNS 
 This toolkit provides a simple web interface to quickly gather technical details, visualize IP/email locations, and perform DNS lookups.
 
 
+<img width="2518" height="1424" alt="image" src="https://github.com/user-attachments/assets/3ab5ba2d-02e0-40e7-bd4c-fb2bc94de73e" />
 
-<img width="2518" height="1424" alt="image" src="https://github.com/user-attachments/assets/8c96d9bc-8320-4291-b5a9-c54487c8d925" />
 
 ---
 
